@@ -76,6 +76,10 @@ button,input,select,textarea{font:inherit;color:inherit}
 .chm.ai.wait{color:var(--muted);font-style:italic}
 .chm.sys{font-size:12px;color:var(--muted);background:transparent;border:1px dashed var(--line)}
 .chm.sys.err{color:var(--danger);border-color:var(--danger)}
+.app.pcol{grid-template-columns:78px 0 minmax(0,1fr)}
+.app.pcol .panel{display:none}
+.tool.pnltgl[aria-pressed="true"] svg{transform:scaleX(-1)}
+@media (max-width:860px){.app.pcol{grid-template-columns:minmax(0,1fr)}}
 .projmeta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px}
 .projmeta label{font-size:11.5px;color:var(--muted)}
 .projmeta select{width:auto;max-width:55%;padding:3px 6px;font-size:12px}
@@ -319,6 +323,7 @@ table.qa th.n{text-align:right}
 
 <div class="app" id="app">
   <nav class="rail" role="tablist" aria-label="Ferramentas">
+    <button class="tool pnltgl" id="pnlTgl" type="button" title="Recolher ou mostrar o painel (mais espaço para o mapa)" aria-pressed="false"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="1"/><path d="M9 4v16"/><path d="m15 10-2 2 2 2"/></svg>Painel</button>
     <div class="mark" aria-hidden="true">
       <svg viewBox="0 0 40 40"><path d="M6 30c5-1 7-6 12-6s7 4 11 3 5-4 5-4" fill="none" stroke="#E7B65A" stroke-width="2"/><path d="M8 22c4-1 6-6 10-6s7 3 10 2 4-4 4-4" fill="none" stroke="#7FB9A2" stroke-width="2"/><path d="M11 14c3-1 5-5 8-5s5 2 7 1" fill="none" stroke="#C9D6D0" stroke-width="2"/></svg>
     </div>
@@ -2122,21 +2127,32 @@ function updLineLabels(){lblGroup.clearLayers();const b=map.getBounds(),W=b.getW
         L.tooltip({permanent:true,direction:'center',className:'flabel rlabel',interactive:false}).setLatLng([c[1],c[0]]).setContent(esc(nm)).addTo(lblGroup);n++}catch(e){}}}}
 map.on('moveend',updLineLabels);
 
-/* ---------- Notas do mapa + ligação com o Sampaio Studio ---------- */
-// Protocolo do Studio: link "#studio=<b64url JSON {id,t,p,e,m,c,u}>"; ida: "Colar do Studio" (format central-mapas-projeto);
-// volta: pacote {formato:"sampaio-mapa-notas", mapa, studio, notas, geradoEm, mapaCompleto}.
-const NT_TIPOS={observacao:'Observação',decisao:'Decisão',pendencia:'Pendência',restricao:'Restrição',dado:'Dado de campo'};
 S.notas=[];S.studio=null;
 try{const j=JSON.parse(localStorage.getItem(KEY+'.notas')||'null');if(Array.isArray(j))S.notas=j}catch(e){}
 try{const j=JSON.parse(localStorage.getItem(KEY+'.studio')||'null');if(j&&j.id)S.studio=j}catch(e){}
 function saveNotas(){try{localStorage.setItem(KEY+'.notas',JSON.stringify(S.notas));localStorage.setItem(KEY+'.studio',JSON.stringify(S.studio||null))}catch(e){}if(!S.loading){S.dirty=true;try{updProjState()}catch(e){}}}
 function b64urlDec(s){s=String(s).replace(/-/g,'+').replace(/_/g,'/');while(s.length%4)s+='=';const b=atob(s),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return new TextDecoder().decode(u)}
-function lerHashStudio(){const m=location.hash.match(/^#studio=([A-Za-z0-9_-]+)/);if(!m)return;
-  try{const v=JSON.parse(b64urlDec(m[1]));if(v&&v.id){S.studio={id:String(v.id),t:String(v.t||''),p:Array.isArray(v.p)?v.p:[],e:String(v.e||''),m:Array.isArray(v.m)?v.m:[],c:Array.isArray(v.c)?v.c:[],u:String(v.u||'')};saveNotas();
-      if(!$('#projName').value.trim())$('#projName').value=S.studio.t.slice(0,120);
-      setTimeout(()=>toast(`Aberto pelo Studio: projeto “${S.studio.t||S.studio.id}”. Para trazer o mapa do projeto, use Projetos › Colar do Studio.`),600)}}
-  catch(e){console.warn(e);toast('O link do Studio veio incompleto. Abra de novo pelo botão do Studio.','error')}
-  try{history.replaceState(null,'',location.pathname+location.search)}catch(e){}}
+async function b64urlGunzip(s){s=String(s).replace(/-/g,'+').replace(/_/g,'/');while(s.length%4)s+='=';const b=atob(s),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);
+  const st=new Blob([u]).stream().pipeThrough(new DecompressionStream('gzip'));return await new Response(st).text()}
+async function lerHashStudio(){const h=location.hash||'';if(!/^#(studio|m)=/.test(h))return;const par=new URLSearchParams(h.slice(1));
+  try{history.replaceState(null,'',location.pathname+location.search)}catch(e){}
+  const sv=par.get('studio');
+  if(sv){try{const v=JSON.parse(b64urlDec(sv));if(v&&v.id){S.studio={id:String(v.id),t:String(v.t||''),p:Array.isArray(v.p)?v.p:[],e:String(v.e||''),m:Array.isArray(v.m)?v.m:[],c:Array.isArray(v.c)?v.c:[],u:String(v.u||'')};saveNotas()}}
+    catch(e){console.warn(e);toast('O link do Studio veio incompleto. Abra de novo pelo botão do Studio.','error')}}
+  const mv=par.get('m');
+  if(mv){try{const j=JSON.parse(await b64urlGunzip(mv));if(!j||j.format!==PROJ_FMT||!Array.isArray(j.layers))throw new Error('mapa inválido');
+      if(S.dirty&&S.layers.length&&$('#projName').value.trim()&&S.proj&&S.proj.id){try{await projSave(false)}catch(e){}}
+      const rec={...j,id:'studio_'+String(j.id||(S.studio&&S.studio.id)||uid()),name:j.name||(S.studio&&S.studio.t)||'Mapa do Studio',pasta:j.pasta&&FOLDERS.includes(j.pasta)?j.pasta:(FOLDERS.includes('MAPAS')?'MAPAS':''),studio:S.studio||j.studio||null,savedAt:new Date().toISOString()};
+      await projPut(rec);await projLoad(rec);setTool('camadas');toast(`Mapa “${rec.name}” aberto a partir do Studio, com satélite. Ao terminar: Notas › Copiar para o Studio.`);return}
+    catch(e){console.warn(e);toast('Não foi possível abrir o mapa enviado pelo Studio ('+(e.message||e)+'). Use Projetos › Colar do Studio.','error')}}
+  if(sv&&S.studio){if(!$('#projName').value.trim())$('#projName').value=S.studio.t.slice(0,120);setTimeout(()=>toast(`Aberto pelo Studio: projeto “${S.studio.t||S.studio.id}”. Para trazer o mapa, use Projetos › Colar do Studio.`),600)}}
+const stCtx=()=>S.studio;
+function ntBanner(){const s=S.studio;return s?`<div class="note ok">Vinculado ao projeto do Studio: <b>${esc(s.t||s.id)}</b>${s.p&&s.p.length?' · processos '+esc(s.p.join(', ')):''} <button class="link" id="ntDesv">desvincular</button></div>`:'<div class="note">Sem vínculo com o Studio. Abra esta Central pelo botão “Abrir no Chrome” do mapa no Studio, ou use Projetos › Colar do Studio.</div>'}
+function ntDesvincular(){S.studio=null;saveNotas();ntRender();toast('Vínculo com o Studio removido.')}
+/* ---------- Notas do mapa + ligação com o Sampaio Studio ---------- */
+// Protocolo do Studio: link "#studio=<b64url JSON {id,t,p,e,m,c,u}>"; ida: "Colar do Studio" (format central-mapas-projeto);
+// volta: pacote {formato:"sampaio-mapa-notas", mapa, studio, notas, geradoEm, mapaCompleto}.
+const NT_TIPOS={observacao:'Observação',decisao:'Decisão',pendencia:'Pendência',restricao:'Restrição',dado:'Dado de campo'};
 function medidasDe(f,ly){const t=f.geometry&&f.geometry.type||'';const m={geometria:/Polygon/.test(t)?'polígono':/Line/.test(t)?'linha':'ponto'};
   if(isPoly(f)){m.areaHa=+(fArea(f)/1e4).toFixed(4);m.perimetroM=+fLen(f).toFixed(2)}else if(isLine(f))m.comprimentoM=+fLen(f).toFixed(2);
   else{try{const c=t==='Point'?f.geometry.coordinates:turf.pointOnFeature(f).geometry.coordinates,u=ll2utm(c[1],c[0]);m.ponto={E:Math.round(u.E),N:Math.round(u.N),fuso:u.zone+'S'}}catch(e){}}
@@ -2164,9 +2180,8 @@ function ntPegarSel(){if(!S.sel)return false;const ly=getLy(S.sel.lid),f=ly&&ly.
   f.properties=f.properties||{};if(!f.properties._nid){f.properties._nid=uid()+uid();save()}
   NT.fe={lid:ly.id,fid:f.properties._nid,fi:S.sel.i,camada:ly.name,nome:fname(f),medidas:medidasDe(f,ly)};NT.pt=null;return true}
 function ntRender(){const el=$('#ntList');if(!el)return;atualizarFeicoes();
-  const sb=$('#ntStudio');if(sb)sb.innerHTML=S.studio?`<div class="note ok">Vinculado ao projeto do Studio: <b>${esc(S.studio.t||S.studio.id)}</b>${S.studio.p&&S.studio.p.length?' · processos '+esc(S.studio.p.join(', ')):''} <button class="link" id="ntDesv">desvincular</button></div>`:'<div class="note">Sem vínculo com o Studio. Abra esta Central pelo botão “Abrir a Central” do mapa do projeto no Studio, ou use Projetos › Colar do Studio.</div>';
-  const dv=$('#ntDesv');if(dv)dv.onclick=()=>{S.studio=null;saveNotas();ntRender();toast('Vínculo com o Studio removido.')};
-  const dl=$('#ntCaps');if(dl)dl.innerHTML=(S.studio&&S.studio.c||[]).map(c=>`<option value="${esc((c[0]?c[0]+' ':'')+c[1])}"></option>`).join('');
+  const sb=$('#ntStudio');if(sb)sb.innerHTML=ntBanner();const dv=$('#ntDesv');if(dv)dv.onclick=()=>{ntDesvincular()};
+  const dl=$('#ntCaps');if(dl)dl.innerHTML=((stCtx()||{}).c||[]).map(c=>`<option value="${esc((c[0]?c[0]+' ':'')+c[1])}"></option>`).join('');
   if(!S.notas.length){el.innerHTML='<div class="empty">Nenhuma nota ainda. Escreva acima o que observou, ligue a um desenho ou a um ponto, e toque em Adicionar.</div>'}
   else el.innerHTML=S.notas.map((n,i)=>`<div class="ly nt" data-nid="${esc(n.id)}" style="display:block">
       <div class="row" style="gap:6px"><span class="tag" style="background:${n.levar?'var(--ochre-soft)':'var(--panel-2)'};color:${n.levar?'var(--ochre)':'var(--muted)'}">${i+1}</span><span class="tag">${esc(NT_TIPOS[n.tipo]||'Observação')}</span>${n.levar?'<span class="tag buffer">levar para o texto</span>':''}${n.destino?`<span class="lbl">→ ${esc(n.destino)}</span>`:''}</div>
@@ -2175,7 +2190,7 @@ function ntRender(){const el=$('#ntList');if(!el)return;atualizarFeicoes();
         <label class="op"><input type="checkbox" data-a="levar" ${n.levar?'checked':''}> levar para o texto</label></div></div>`).join('');
   $('#ntCount').textContent=S.notas.length?`${S.notas.length} nota(s) · ${S.notas.filter(n=>n.levar).length} para o texto`:'';
   ntRenderMarcas()}
-function ntFoco(id){const row=document.querySelector(`.nt[data-nid="${CSS.escape(id)}"]`);if(row){row.scrollIntoView({block:'center'});row.style.outline='2px solid var(--ochre)';setTimeout(()=>row.style.outline='',1500)}}
+function ntFoco(id){const row=$(`.nt[data-nid="${CSS.escape(id)}"]`);if(row){row.scrollIntoView({block:'center'});row.style.outline='2px solid var(--ochre)';setTimeout(()=>row.style.outline='',1500)}}
 function ntLimparForm(){$('#ntTexto').value='';$('#ntDestino').value='';$('#ntLevar').checked=false;$('#ntTipo').value='observacao';NT.edit=null;NT.fe=null;NT.pt=null;NT.pick=false;$('#ntAdd').textContent='Adicionar nota';$('#ntCancel').hidden=true;ntFormVinculo()}
 $('#ntPick').onclick=()=>{NT.pick=!NT.pick;if(NT.pick&&D.mode)setMode(null);ntFormVinculo()};
 $('#ntSel').onclick=()=>{if(ntPegarSel()){ntFormVinculo();toast('Nota ligada ao desenho selecionado.')}else toast('Nenhum desenho selecionado. Em Navegar, toque num desenho do mapa e depois aqui.','error')};
@@ -2196,7 +2211,7 @@ function pacoteStudio(){atualizarFeicoes();const name=$('#projName').value.trim(
   const snap=snapshot(name,S.proj&&S.proj.id,$('#projFolder').value);
   const notas=S.notas.map((n,i)=>{let ponto=null;if(n.pos){const u=ll2utm(n.pos[1],n.pos[0]);ponto={lat:n.pos[1],lon:n.pos[0],E:Math.round(u.E),N:Math.round(u.N),fuso:u.zone+'S'}}
     return{id:n.id,numero:i+1,texto:n.texto,tipo:n.tipo||'observacao',destino:n.destino||'',levar:!!n.levar,criadaEm:n.criadaEm,atualizadaEm:n.atualizadaEm,feicao:n.feicao?{camada:n.feicao.camada,nome:n.feicao.nome,medidas:n.feicao.medidas}:null,feicaoApagada:!!n.feicaoApagada,ponto}});
-  return{formato:'sampaio-mapa-notas',v:1,mapa:{id:snap.id,nome:name},studio:S.studio?{projetoId:S.studio.id,titulo:S.studio.t}:null,notas,geradoEm:new Date().toISOString(),mapaCompleto:snap}}
+  return{formato:'sampaio-mapa-notas',v:1,mapa:{id:snap.id,nome:name},studio:stCtx()?{projetoId:stCtx().id,titulo:stCtx().t}:null,notas,geradoEm:new Date().toISOString(),mapaCompleto:snap}}
 $('#ntCopy').onclick=()=>{const txt=JSON.stringify(pacoteStudio());const done=()=>toast('Copiado. No Studio, abra o projeto e cole em “Trazer notas do mapa” ou em “Trazer para o mapa do projeto”.');
   try{navigator.clipboard.writeText(txt).then(done,()=>showText('mapa-para-o-studio.json',txt))}catch(e){showText('mapa-para-o-studio.json',txt)}};
 $('#ntFile').onclick=()=>{const name=$('#projName').value.trim()||'mapa';offer(slug(name)+'.notas.json',JSON.stringify(pacoteStudio()))};
@@ -2215,7 +2230,7 @@ lerHashStudio();ntFormVinculo();setTimeout(()=>{try{ntRender()}catch(e){console.
 const CH={turns:[],busy:false,ctl:null,sample:null,tools:false};
 const chatP=(async()=>{try{if(!window.claude||!window.claude.use)return null;const s=await window.claude.use('sample');if(s){CH.sample=s;try{const l=await s.limits();CH.tools=!!(l&&l.tools)}catch(e){}}return s}catch(e){return null}})();
 function resumoMapa(){const L0=[];const c=map.getCenter(),u=ll2utm(c.lat,c.lng);
-  L0.push(`Projeto: ${$('#projName').value.trim()||'(sem nome)'}${S.studio?` · vinculado ao Studio: ${S.studio.t}${S.studio.p&&S.studio.p.length?' · processos ANM '+S.studio.p.join(', '):''}${S.studio.m&&S.studio.m.length?' · municípios '+S.studio.m.join(', '):''}`:''}`);
+  L0.push(`Projeto: ${$('#projName').value.trim()||'(sem nome)'}${(()=>{const s=stCtx();return s?` · projeto do Studio: ${s.t}${s.p&&s.p.length?' · processos ANM '+s.p.join(', '):''}${s.m&&s.m.length?' · municípios '+s.m.join(', '):''}`:''})()}`);
   L0.push(`Vista atual: centro ${c.lat.toFixed(5)}, ${c.lng.toFixed(5)} (UTM ${Math.round(u.E)} E ${Math.round(u.N)} N fuso ${u.zone}S), zoom ${map.getZoom()}. SIRGAS 2000.`);
   if(S.sel){const ly=getLy(S.sel.lid),f=ly&&ly.data.features[S.sel.i];if(f)L0.push(`Desenho selecionado: “${fname(f)||'sem nome'}” na camada “${ly.name}”.`)}
   L0.push(`Camadas (${S.layers.length}):`);
@@ -2263,6 +2278,10 @@ function chIntro(){chMsg('sys',IN_CLAUDE?'Pergunte sobre o mapa ou peça uma aç
 chIntro();
 
 $('#pvPasteStudio').onclick=colarStudioModal;
+/* ---------- Recolher painel ---------- */
+function setPainel(col){$('#app').classList.toggle('pcol',col);$('#pnlTgl').setAttribute('aria-pressed',String(col));setTimeout(()=>{try{map.invalidateSize()}catch(e){}},60);try{localStorage.setItem(KEY+'.pcol',col?'1':'')}catch(e){}}
+$('#pnlTgl').onclick=()=>setPainel(!$('#app').classList.contains('pcol'));
+try{if(localStorage.getItem(KEY+'.pcol')==='1')setPainel(true)}catch(e){}
 /* ---------- Abas ---------- */
 const TOOLS={notas:['Notas','Observações do mapa, ligadas a desenhos ou pontos. Vão para o Studio e para os relatórios.'],claude:['Claude','Converse comigo sobre este mapa: perguntas, buffers, sobreposições e notas.'],projetos:['Projetos','Seus projetos organizados em pastas. Toque num projeto para abri-lo.'],camadas:['Camadas','Ligue, ordene, recolora e inspecione as camadas do projeto.'],importar:['Importar','Traga arquivos KML, KMZ e GeoJSON, inclusive em UTM SIRGAS 2000.'],
   desenhar:['Desenhar e medir','Crie polígonos, linhas e pontos, meça no mapa ou monte a poligonal a partir do memorial descritivo.'],
@@ -2271,9 +2290,9 @@ const TOOLS={notas:['Notas','Observações do mapa, ligadas a desenhos ou pontos
   sobrepor:['Sobreposição','Interseção, diferença e união entre camadas de polígonos, com área resultante.'],
   exportar:['Exportar','Mapa em PDF com carimbo técnico, shapefile, GeoJSON e KML.'],
   fontes:['Fontes de dados','Onde baixar bases oficiais e imagens de satélite para o Paraná, e como trazê-las para cá.']};
-function setTool(t){$$('.tool').forEach(b=>b.setAttribute('aria-selected',b.dataset.tool===t));$$('.view').forEach(v=>v.hidden=v.dataset.view!==t);$('#ptitle').textContent=TOOLS[t][0];$('#pdesc').textContent=TOOLS[t][1];
+function setTool(t){if($('#app').classList.contains('pcol')&&t)setPainel(false);$$('.tool[data-tool]').forEach(b=>b.setAttribute('aria-selected',b.dataset.tool===t));$$('.view').forEach(v=>v.hidden=v.dataset.view!==t);$('#ptitle').textContent=TOOLS[t][0];$('#pdesc').textContent=TOOLS[t][1];
   if(t==='areas')renderAreas();if(t==='projetos')renderProjTree();if(t==='notas')ntRender();try{localStorage.setItem(KEY+'.tab',t)}catch(e){}}
-$$('.tool').forEach(b=>b.addEventListener('click',()=>setTool(b.dataset.tool)));
+$$('.tool[data-tool]').forEach(b=>b.addEventListener('click',()=>setTool(b.dataset.tool)));
 
 /* ---------- Botões do mapa ---------- */
 $('#zIn').onclick=()=>map.zoomIn();$('#zOut').onclick=()=>map.zoomOut();$('#zFit').onclick=fitAll;$('#btnFitAll').onclick=fitAll;$('#zPR').onclick=()=>map.fitBounds(refEstado.getBounds(),{padding:[20,20]});
