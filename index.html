@@ -264,6 +264,11 @@ table.qa th.n{text-align:right}
 .leaflet-container{overflow:hidden;-webkit-tap-highlight-color:transparent;outline-offset:1px;font-family:var(--f-body)}
 .leaflet-container .leaflet-overlay-pane svg{max-width:none!important;max-height:none!important}
 .leaflet-container img.leaflet-image-layer{max-width:none!important;max-height:none!important;image-rendering:auto}
+.leaflet-container .leaflet-tile-pane img,.leaflet-container img.leaflet-tile{max-width:none!important;max-height:none!important;border:0;padding:0;margin:0;-webkit-user-select:none;user-select:none;-webkit-user-drag:none}
+.leaflet-tile{visibility:hidden}.leaflet-tile-loaded{visibility:inherit}
+.leaflet-tile-container{pointer-events:none}
+.leaflet-safari .leaflet-tile{image-rendering:-webkit-optimize-contrast}
+.leaflet-safari .leaflet-tile-container{width:1600px;height:1600px;-webkit-transform-origin:0 0}
 .leaflet-container.leaflet-touch-zoom{touch-action:pan-x pan-y}
 .leaflet-container.leaflet-touch-drag{touch-action:none}
 .leaflet-container.leaflet-touch-drag.leaflet-touch-zoom{touch-action:none}
@@ -285,6 +290,7 @@ table.qa th.n{text-align:right}
 .leaflet-tooltip.city{background:none;border:0;box-shadow:none;padding:0 0 0 2px;color:var(--muted);font-size:11px;font-family:var(--f-body)}
 .leaflet-tooltip.fuso{background:none;border:0;box-shadow:none;color:var(--ochre);font-family:var(--f-display);font-weight:600;letter-spacing:.08em;font-size:12px}
 .leaflet-tooltip.flabel{background:color-mix(in srgb,var(--panel) 80%,transparent);border:0;box-shadow:none;font-weight:600;font-size:11px;padding:1px 5px}
+.leaflet-tooltip.rlabel{color:#1d5f86;font-style:italic;font-weight:600;background:color-mix(in srgb,var(--panel) 70%,transparent)}
 
 @media (max-width:860px){
   html,body{height:auto}
@@ -319,7 +325,7 @@ table.qa th.n{text-align:right}
 
   <aside class="panel">
     <div class="phead">
-      <div class="brand">Central de Mapas · Paraná · v0.2</div>
+      <div class="brand">Central de Mapas · Paraná · v0.2.5</div>
       <div class="proj">
         <input type="text" id="projName" aria-label="Nome do projeto" placeholder="Nome do projeto" enterkeyhint="done" maxlength="120">
         <button class="btn primary" id="projSave" title="Salvar o projeto">Salvar</button>
@@ -390,6 +396,25 @@ table.qa th.n{text-align:right}
 
       <!-- IMPORTAR -->
       <section class="view" data-view="importar" hidden>
+        <h2 class="sec">Serviços online (sem baixar arquivo)</h2>
+        <div class="field"><label for="svcSel">Base</label>
+          <select id="svcSel">
+            <option value="https://portal1.snirh.gov.br/arcgis/rest/services/SPR/BHO2017_50K_TRECHODRENAGEM/MapServer">ANA · Hidrografia BHO 2017 · rios com nome</option>
+            <option value="https://www.snirh.gov.br/arcgis/rest/services/SGI/BHO_Dominio_Curso_Dagua/MapServer">ANA · Domínio dos cursos d'água (federal/estadual) · com nome</option>
+            <option value="https://portal1.snirh.gov.br/ana/rest/services/dados_abertos/Hidrografia/MapServer">ANA · Dados abertos · Hidrografia (em teste)</option>
+            <option value="custom">Outro serviço (colar endereço ArcGIS REST)</option>
+          </select></div>
+        <div class="field" id="svcCustomBox" hidden><label for="svcUrl">Endereço do serviço (…/MapServer ou …/FeatureServer, com ou sem o número da camada)</label><input type="text" id="svcUrl" spellcheck="false" placeholder="https://…/arcgis/rest/services/…/MapServer"></div>
+        <div class="field"><label for="svcLayer">Camada do serviço</label><select id="svcLayer"><option value="">Carregando…</option></select></div>
+        <div class="field"><label for="svcArea">Área da busca</label>
+          <select id="svcArea">
+            <option value="view">Vista atual do mapa</option>
+            <option value="PI">Piauí (estado inteiro)</option>
+            <option value="layer">Dentro de uma camada de polígonos</option>
+          </select></div>
+        <div class="field" id="svcPolyBox" hidden><label for="svcPoly">Camada de polígonos</label><select id="svcPoly"></select></div>
+        <button class="btn primary block" id="svcGo">Buscar e abrir no mapa</button>
+        <div class="note" id="svcStatus">Os dados vêm direto do servidor oficial, já com os atributos (nome do rio em NORIOCOMP). Funciona na Central publicada no seu site; dentro do claude.ai o acesso é bloqueado.</div>
         <h2 class="sec">Google Drive</h2>
         <div class="field">
           <div class="row"><input type="text" id="drvQ" placeholder="Parte do nome (ex.: Reserva_Legal)" style="flex:1" enterkeyhint="search"><button class="btn primary" id="drvSearch">Buscar</button></div>
@@ -759,7 +784,7 @@ function applyRefs(){[[refEstado,'#refEstado'],[refCidades,'#refCidades'],[refFu
 map.on('moveend',()=>{drawGrid();updateScale()});
 
 /* ---------- Geometria ---------- */
-function fname(f){const p=f.properties||{};return p.name||p.nome||p.Name||p.NOME||p.NM_MUN||p.titulo||p.tema||p.pasta||p.ID||''}
+function fname(f){const p=f.properties||{};return p.name||p.nome||p.Name||p.NOME||p.noriocomp||p.NORIOCOMP||p.nooriginal||p.NOORIGINAL||p.NM_MUN||p.titulo||p.tema||p.pasta||p.ID||''}
 function isPoly(f){const t=f.geometry&&f.geometry.type;return t==='Polygon'||t==='MultiPolygon'}
 function isLine(f){const t=f.geometry&&f.geometry.type;return t==='LineString'||t==='MultiLineString'}
 function fArea(f){try{return isPoly(f)?turf.area(f):0}catch(e){return 0}}
@@ -778,11 +803,11 @@ function renderLayer(ly){if(ly._lg)map.removeLayer(ly._lg);
   const big=ly.data.features.length>1500;
   ly._lg=L.geoJSON(ly.data,{renderer:big?canvasR:undefined,style:f=>styleFor(ly,f),pointToLayer:(f,ll)=>L.circleMarker(ll,{radius:big?4:6,renderer:big?canvasR:undefined}),
     onEachFeature:(f,l)=>{const n=fname(f);
-      if(ly.labels&&n)l.bindTooltip(esc(n),{permanent:true,direction:/Point/.test(f.geometry.type)?'right':'center',className:'flabel',offset:/Point/.test(f.geometry.type)?[8,0]:[0,0]});
+      if(ly.labels&&n&&!isLine(f))l.bindTooltip(esc(n),{permanent:true,direction:/Point/.test(f.geometry.type)?'right':'center',className:'flabel',offset:/Point/.test(f.geometry.type)?[8,0]:[0,0]});
       else if(n)l.bindTooltip(esc(n),{sticky:true});
       l.on('click',e=>{if(D.mode)return;L.DomEvent.stopPropagation(e);select(ly.id,ly.data.features.indexOf(f))})}});
   if(ly.visible)ly._lg.addTo(map)}
-function reorder(){for(let i=S.layers.length-1;i>=0;i--){const l=S.layers[i];if(l.visible&&l._lg)l._lg.bringToFront()}if(hl)hl.bringToFront()}
+function reorder(){if(typeof updLineLabels==='function')setTimeout(updLineLabels,0);for(let i=S.layers.length-1;i>=0;i--){const l=S.layers[i];if(l.visible&&l._lg)l._lg.bringToFront()}if(hl)hl.bringToFront()}
 function addLayer(o){const ly={id:uid(),name:o.name||'Camada',color:o.color||PALETTE[S.layers.length%PALETTE.length],opacity:o.opacity??.3,visible:true,labels:!!o.labels,kind:o.kind||'import',source:o.source||'',data:o.data};
   S.layers.unshift(ly);renderLayer(ly);reorder();save();refreshAll();if(o.zoom!==false)zoomTo(ly);return ly}
 function getLy(id){return S.layers.find(l=>l.id===id)}
@@ -1460,7 +1485,10 @@ function setBase(k){if(baseLayer){map.removeLayer(baseLayer);baseLayer=null}base
   if(k==='esri'){if(ESRI.key)mkTiles(ESRI.url(ESRI.key),{maxNativeZoom:19},ESRI.attr,'Esri World Imagery');else baseStatus('Informe a chave de API do ArcGIS e toque em Conectar.');return}
   if(k==='google'){if(GOO.session)mkTiles(gUrl(),{maxNativeZoom:21},'Google','Google');else baseStatus('Informe a chave da Map Tiles API e toque em Conectar.')}}
 function mkTiles(url,opt,attrHtml,label){let ok=0,err=0;baseLayer=L.tileLayer(url,{maxZoom:20,...opt});
-  baseLayer.on('tileload',()=>{if(++ok===1)baseStatus(`${label}: imagens carregando normalmente.`,'ok')});
+  baseLayer.on('tileload',e=>{const t=e.tile;if(t){t.style.maxWidth='none';t.style.maxHeight='none';t.style.visibility='inherit'}
+    if(++ok===1)setTimeout(()=>{const w=t&&t.getBoundingClientRect().width;
+      if(t&&w<4)baseStatus(`${label}: as imagens chegaram, mas ficaram invisíveis na tela (largura ${Math.round(w||0)} px). Me envie esta mensagem para eu corrigir.`,'error');
+      else baseStatus(`${label}: imagens carregando normalmente.`,'ok')},400)});
   baseLayer.on('tileerror',()=>{if(!ok&&++err===3)baseStatus(IN_CLAUDE?`${label}: as imagens não carregaram porque o claude.ai bloqueia, dentro de artefatos, servidores de mapas externos. Na versão em site próprio esta fonte funciona.`:`${label}: as imagens não carregaram. Confira a conexão, se a chave está correta e se ela permite o endereço deste site (restrição de domínio).`,'error')});
   baseLayer.addTo(map);baseLayer.bringToBack();attrib(attrHtml);baseStatus(`${label}: conectando…`)}
 function connectEsri(){const key=$('#eKey').value.trim();if(!key){baseStatus('Informe a chave de API do ArcGIS.','error');return}
@@ -1976,6 +2004,82 @@ function updCloudUI(){const el=$('#cloudBox');if(!el)return;let h='';
 function cloudBadge(p){if(!CLOUD.ok)return PENDING.includes(p.id)?' · aguardando envio':'';if(p._cloudOnly)return' · ☁ no Drive (de outro aparelho)';if(p._newer)return' · ☁ versão mais nova no Drive';if(p._cloud)return' · ☁';return PENDING.includes(p.id)?' · aguardando envio':' · só neste aparelho'}
 if(!IN_CLAUDE&&CLOUD.clientId)loadGIS().then(initTokenClient).catch(()=>{});
 updCloudUI();
+
+/* ---------- Serviços online (ArcGIS REST): busca por área, sem baixar arquivo ---------- */
+const STATE_BBOX={PI:{nome:'Piauí',b:[-45.99,-10.93,-40.37,-2.74]}};
+const svcSt=t=>{$('#svcStatus').textContent=t};
+const svcErr=(t)=>{const el=$('#svcStatus');el.className='note warn';el.textContent=t};
+const svcOk=(t)=>{const el=$('#svcStatus');el.className='note ok';el.textContent=t};
+function svcBase(){const v=$('#svcSel').value;return(v==='custom'?$('#svcUrl').value.trim():v).replace(/\/+$/,'').replace(/\?.*$/,'')}
+async function svcJSON(url,params){const q=new URLSearchParams({...params,f:params&&params.f||'json'});
+  let r;try{r=await fetch(url+(url.includes('?')?'&':'?')+q.toString())}catch(e){throw new Error(IN_CLAUDE?'o claude.ai bloqueia servidores externos dentro de artefatos. Use a Central pelo seu site':'o servidor não respondeu ou não permite acesso a partir deste site')}
+  if(!r.ok)throw new Error('o servidor respondeu HTTP '+r.status);const j=await r.json();if(j&&j.error)throw new Error((j.error.message||'erro do servidor')+(j.error.details&&j.error.details.length?' · '+j.error.details.join(' '):''));return j}
+let svcInfoTok=0;
+async function svcLoadLayers(){const base=svcBase(),sel=$('#svcLayer'),tok=++svcInfoTok;
+  if(!/^https:\/\/.+\/(MapServer|FeatureServer)(\/\d+)?$/i.test(base)){sel.innerHTML='<option value="">Informe um endereço …/MapServer ou …/FeatureServer</option>';return}
+  const m=base.match(/^(.*\/(?:MapServer|FeatureServer))(?:\/(\d+))?$/i),svc=m[1],fixed=m[2];
+  sel.innerHTML='<option value="">Carregando camadas…</option>';
+  try{const j=await svcJSON(svc+'/layers',{});if(tok!==svcInfoTok)return;
+    const ls=(j.layers||[]).filter(l=>!l.type||/Feature Layer/i.test(l.type));
+    if(!ls.length)throw new Error('o serviço não tem camadas vetoriais consultáveis');
+    sel.innerHTML=ls.map(l=>`<option value="${svc}/${l.id}" ${String(l.id)===fixed?'selected':''}>${esc(l.name)} · ${esc((l.geometryType||'').replace('esriGeometry',''))}</option>`).join('');
+    svcSt(`${ls.length} camada(s) disponível(is). Escolha a área e toque em Buscar.`);$('#svcStatus').className='note'}
+  catch(e){if(tok!==svcInfoTok)return;sel.innerHTML=`<option value="${fixed?base:svc+'/0'}">Camada ${fixed||0} (não foi possível listar)</option>`;svcErr('Não foi possível ler o serviço: '+e.message+'.')}}
+function svcPolys(){const ls=polyLayers();$('#svcPoly').innerHTML=ls.length?ls.map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join(''):'<option value="">Nenhuma camada de polígonos no projeto</option>'}
+$('#svcSel').onchange=()=>{$('#svcCustomBox').hidden=$('#svcSel').value!=='custom';if($('#svcSel').value!=='custom')svcLoadLayers()};
+$('#svcUrl').addEventListener('change',svcLoadLayers);
+$('#svcArea').onchange=()=>{$('#svcPolyBox').hidden=$('#svcArea').value!=='layer';svcPolys()};
+function esri2geo(f,gt){const a=f.attributes||{},g=f.geometry;let geom=null;
+  if(g){if(g.paths)geom=g.paths.length===1?{type:'LineString',coordinates:g.paths[0]}:{type:'MultiLineString',coordinates:g.paths};
+    else if(g.rings)geom=assemblePolys(g.rings.map(r=>r.map(c=>[c[0],c[1]])));
+    else if(g.points)geom={type:'MultiPoint',coordinates:g.points};
+    else if(isFinite(g.x))geom={type:'Point',coordinates:[g.x,g.y]}}
+  return geom?{type:'Feature',properties:a,geometry:geom}:null}
+let svcArm=0;
+async function svcRun(){const btn=$('#svcGo'),layerUrl=$('#svcLayer').value;if(!layerUrl){svcErr('Escolha uma camada do serviço.');return}
+  const area=$('#svcArea').value;let bb,clip=null,areaName;
+  if(area==='view'){const b=map.getBounds();bb=[b.getWest(),b.getSouth(),b.getEast(),b.getNorth()];areaName='vista atual'}
+  else if(area==='layer'){const ly=getLy($('#svcPoly').value);if(!ly){svcErr('Escolha uma camada de polígonos para delimitar a busca.');return}
+    clip=dissolve(ly.data);if(!clip){svcErr('A camada escolhida não tem polígonos.');return}bb=turf.bbox(clip);areaName=ly.name}
+  else{const s=STATE_BBOX[area];bb=s.b;areaName=s.nome}
+  btn.disabled=true;const label=btn.textContent;btn.textContent='Buscando…';$('#svcStatus').className='note';
+  try{const info=await svcJSON(layerUrl,{});
+    const geomP={geometry:bb.join(','),geometryType:'esriGeometryEnvelope',inSR:'4326',spatialRel:'esriSpatialRelIntersects',where:'1=1'};
+    svcSt('Contando feições na área…');
+    const ids=await svcJSON(layerUrl+'/query',{...geomP,returnIdsOnly:'true'});const all=(ids.objectIds||[]).sort((a,b)=>a-b),oidF=ids.objectIdFieldName||'OBJECTID';
+    if(!all.length){svcOk(`Nenhuma feição de “${info.name||'camada'}” encontrada na área (${areaName}).`);btn.disabled=false;btn.textContent=label;return}
+    if(all.length>25000&&svcArm!==all.length){svcArm=all.length;svcErr(`A área tem ${all.length.toLocaleString('pt-BR')} feições, o que pode deixar o aparelho lento. Toque em Buscar de novo para continuar, ou escolha uma área menor.`);btn.disabled=false;btn.textContent=label;return}
+    svcArm=0;const feats=[],chunk=250;let geoOK=true;
+    for(let i=0;i<all.length;i+=chunk){svcSt(`Baixando ${Math.min(i+chunk,all.length).toLocaleString('pt-BR')} de ${all.length.toLocaleString('pt-BR')} feições…`);
+      const p={objectIds:all.slice(i,i+chunk).join(','),outFields:'*',outSR:'4326',returnGeometry:'true'};let got=null;
+      if(geoOK){try{const j=await svcJSON(layerUrl+'/query',{...p,f:'geojson'});if(j&&j.type==='FeatureCollection')got=j.features||[];else geoOK=false}catch(e){geoOK=false}}
+      if(!got){const j=await svcJSON(layerUrl+'/query',p);got=(j.features||[]).map(esri2geo).filter(Boolean)}
+      feats.push(...got.filter(f=>f&&f.geometry))}
+    let out=feats;
+    if(clip){svcSt('Recortando pela área escolhida…');out=feats.filter(f=>{try{return turf.booleanIntersects(f,clip)}catch(e){return false}})}
+    if(!out.length){svcOk(`Nenhuma feição dentro de “${areaName}”.`);btn.disabled=false;btn.textContent=label;return}
+    const named=out.filter(f=>fname(f)).length;
+    const ly=addLayer({name:`${info.name||'Serviço online'} · ${areaName}`,data:{type:'FeatureCollection',features:out},kind:'import',source:layerUrl,labels:true,color:/drenagem|hidro|rio|curso/i.test(info.name||'')?'#2E7DA0':undefined,zoom:area!=='view'});
+    svcOk(`${out.length.toLocaleString('pt-BR')} feições abertas como “${ly.name}” (${named.toLocaleString('pt-BR')} com nome). Os nomes aparecem ao aproximar o mapa; use Exportar › Gerar shapefile para salvar.`);
+    logImp(true,`Serviço online · ${ly.name} · ${out.length} feições`)}
+  catch(e){console.error(e);svcErr('Não foi possível buscar: '+e.message+'.')}
+  btn.disabled=false;btn.textContent=label}
+$('#svcGo').onclick=svcRun;
+svcLoadLayers();
+
+/* ---------- Rótulos dinâmicos para linhas (rios): um rótulo por nome, só o que está na tela ---------- */
+const lblGroup=L.layerGroup().addTo(map);const FBB=new WeakMap(),FLEN=new WeakMap();
+function fbb(f){let b=FBB.get(f);if(!b){try{b=turf.bbox(f)}catch(e){b=[0,0,0,0]}FBB.set(f,b)}return b}
+function flen(f){let l=FLEN.get(f);if(l==null){l=fLen(f);FLEN.set(f,l)}return l}
+function updLineLabels(){lblGroup.clearLayers();const b=map.getBounds(),W=b.getWest(),So=b.getSouth(),E=b.getEast(),N=b.getNorth(),z=map.getZoom();let n=0;
+  for(const ly of S.layers){if(!ly.visible||!ly.labels)continue;const lines=ly.data.features.filter(isLine);if(!lines.length)continue;
+    if(lines.length>300&&z<11)continue;
+    const best=new Map();
+    for(const f of lines){const nm=fname(f);if(!nm)continue;const bx=fbb(f);if(bx[2]<W||bx[0]>E||bx[3]<So||bx[1]>N)continue;const l=flen(f),cur=best.get(nm);if(!cur||l>cur.l)best.set(nm,{f,l})}
+    for(const[nm,{f}]of best){if(n>=250)break;try{const ln=f.geometry.type==='LineString'?f:turf.lineString(f.geometry.coordinates.reduce((a,c)=>c.length>a.length?c:a,[]));
+        const c=turf.along(ln,turf.length(ln)/2).geometry.coordinates;
+        L.tooltip({permanent:true,direction:'center',className:'flabel rlabel',interactive:false}).setLatLng([c[1],c[0]]).setContent(esc(nm)).addTo(lblGroup);n++}catch(e){}}}}
+map.on('moveend',updLineLabels);
 
 /* ---------- Abas ---------- */
 const TOOLS={projetos:['Projetos','Seus projetos organizados em pastas. Toque num projeto para abri-lo.'],camadas:['Camadas','Ligue, ordene, recolora e inspecione as camadas do projeto.'],importar:['Importar','Traga arquivos KML, KMZ e GeoJSON, inclusive em UTM SIRGAS 2000.'],
