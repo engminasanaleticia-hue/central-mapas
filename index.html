@@ -66,6 +66,7 @@ button,input,select,textarea{font:inherit;color:inherit}
 .proj{display:flex;gap:6px;margin:8px 0 2px}
 .proj input{flex:1;min-width:0;font-weight:600;font-size:14px}
 .proj .btn{padding:7px 10px}
+.sitelink{margin:6px 0 4px;text-decoration:none}
 .projmeta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px}
 .projmeta label{font-size:11.5px;color:var(--muted)}
 .projmeta select{width:auto;max-width:55%;padding:3px 6px;font-size:12px}
@@ -325,7 +326,8 @@ table.qa th.n{text-align:right}
 
   <aside class="panel">
     <div class="phead">
-      <div class="brand">Central de Mapas · Paraná · v0.2.5</div>
+      <div class="brand">Central de Mapas · Paraná · v0.2.6</div>
+      <a class="btn primary block sitelink" id="siteLink" href="https://engminasanaleticia-hue.github.io/central-mapas/" target="_blank" rel="noopener" hidden>Abrir a Central completa (com satélite) ↗</a>
       <div class="proj">
         <input type="text" id="projName" aria-label="Nome do projeto" placeholder="Nome do projeto" enterkeyhint="done" maxlength="120">
         <button class="btn primary" id="projSave" title="Salvar o projeto">Salvar</button>
@@ -399,9 +401,9 @@ table.qa th.n{text-align:right}
         <h2 class="sec">Serviços online (sem baixar arquivo)</h2>
         <div class="field"><label for="svcSel">Base</label>
           <select id="svcSel">
-            <option value="https://portal1.snirh.gov.br/arcgis/rest/services/SPR/BHO2017_50K_TRECHODRENAGEM/MapServer">ANA · Hidrografia BHO 2017 · rios com nome</option>
-            <option value="https://www.snirh.gov.br/arcgis/rest/services/SGI/BHO_Dominio_Curso_Dagua/MapServer">ANA · Domínio dos cursos d'água (federal/estadual) · com nome</option>
-            <option value="https://portal1.snirh.gov.br/ana/rest/services/dados_abertos/Hidrografia/MapServer">ANA · Dados abertos · Hidrografia (em teste)</option>
+            <option value="https://www.snirh.gov.br/arcgis/rest/services/SGI/BHO_Dominio_Curso_Dagua/MapServer">ANA · Hidrografia com nome dos rios e riachos (domínio dos cursos d'água)</option>
+            <option value="https://portal1.snirh.gov.br/arcgis/rest/services/SPR/BHO2017_50K_TRECHODRENAGEM/MapServer">ANA · BHO 2017 (servidor recusa acesso pelo site)</option>
+            <option value="https://portal1.snirh.gov.br/ana/rest/services/dados_abertos/Hidrografia/MapServer">ANA · Dados abertos · Hidrografia (servidor recusa acesso pelo site)</option>
             <option value="custom">Outro serviço (colar endereço ArcGIS REST)</option>
           </select></div>
         <div class="field" id="svcCustomBox" hidden><label for="svcUrl">Endereço do serviço (…/MapServer ou …/FeatureServer, com ou sem o número da camada)</label><input type="text" id="svcUrl" spellcheck="false" placeholder="https://…/arcgis/rest/services/…/MapServer"></div>
@@ -784,7 +786,8 @@ function applyRefs(){[[refEstado,'#refEstado'],[refCidades,'#refCidades'],[refFu
 map.on('moveend',()=>{drawGrid();updateScale()});
 
 /* ---------- Geometria ---------- */
-function fname(f){const p=f.properties||{};return p.name||p.nome||p.Name||p.NOME||p.noriocomp||p.NORIOCOMP||p.nooriginal||p.NOORIGINAL||p.NM_MUN||p.titulo||p.tema||p.pasta||p.ID||''}
+function fname(f){const p=f.properties||{};return String(fnameRaw(p)).trim()}
+function fnameRaw(p){return p.name||p.nome||p.Name||p.NOME||p.noriocomp||p.NORIOCOMP||p.nooriginal||p.NOORIGINAL||p.NM_MUN||p.titulo||p.tema||p.pasta||p.ID||''}
 function isPoly(f){const t=f.geometry&&f.geometry.type;return t==='Polygon'||t==='MultiPolygon'}
 function isLine(f){const t=f.geometry&&f.geometry.type;return t==='LineString'||t==='MultiLineString'}
 function fArea(f){try{return isPoly(f)?turf.area(f):0}catch(e){return 0}}
@@ -2117,7 +2120,7 @@ try{const k=localStorage.getItem(KEY+'.ekey');if(k){$('#eKey').value=k;$('#eReme
 let baseSaved=null;try{baseSaved=localStorage.getItem(KEY+'.base')}catch(e){}
 if(!['none','eox','esri','google'].includes(baseSaved))baseSaved=IN_CLAUDE?'none':(ESRI.key?'esri':'eox');
 setBase(baseSaved==='google'?'none':baseSaved);if(baseSaved==='google'&&$('#gKey').value)connectGoogle();
-setMode(null);updExtLinks();
+setMode(null);updExtLinks();if(IN_CLAUDE)$('#siteLink').hidden=false;
 if(S.proj)$('#projName').value=S.proj.name;renderFolderSelect();updProjState();renderProjTree();
 getDl();
 })();
